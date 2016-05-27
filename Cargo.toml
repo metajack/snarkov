@@ -1,0 +1,8 @@
+[package]
+name = "snarkov"
+version = "0.1.0"
+authors = ["Jack Moffitt <jack@metajack.im>"]
+
+[dependencies]
+rand = "0.3"
+clap = "2.5"
