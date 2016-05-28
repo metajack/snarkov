@@ -68,7 +68,13 @@ fn main() {
     };
     let start = matches.values_of("start").unwrap().collect::<Vec<_>>();
 
-    let mut corpus = Corpus::new(input, context).unwrap();
+    let mut corpus = match Corpus::new(input, context) {
+        Ok(corpus) => corpus,
+        Err(e) => {
+            println!("error: {}", e);
+            ::std::process::exit(1);
+        }
+    };
     if let Some(seed) = matches.value_of("seed") {
         corpus.seed(parse_seed(seed));
     }
