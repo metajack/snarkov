@@ -6,6 +6,19 @@ use std::path::Path;
 use std::str::FromStr;
 use snarkov::Corpus;
 
+fn format_seed(seed: [u32; 4]) -> String {
+    format!("{:x}{:x}{:x}{:x}", seed[0], seed[1], seed[2], seed[3])
+}
+
+fn parse_seed(seed: &str) -> [u32; 4] {
+    assert!(seed.len() == 32);
+    let s1 = u32::from_str_radix(&seed[..8], 16).unwrap();
+    let s2 = u32::from_str_radix(&seed[8..16], 16).unwrap();
+    let s3 = u32::from_str_radix(&seed[16..24], 16).unwrap();
+    let s4 = u32::from_str_radix(&seed[24..], 16).unwrap();
+    [s1, s2, s3, s4]
+}
+
 fn main() {
     let matches = App::new("snarkov")
         .about("Generate markov chains from text")
@@ -23,11 +36,17 @@ fn main() {
              .value_name("LEN")
              .default_value("25")
              .takes_value(true))
+        .arg(Arg::with_name("seed")
+             .help("Random seed")
+             .short("s")
+             .long("seed")
+             .value_name("SEED")
+             .takes_value(true))
         .arg(Arg::with_name("INPUT")
              .help("Input text file")
              .required(true))
-        .arg(Arg::with_name("seed")
-             .help("Seed words (must be as many as context)")
+        .arg(Arg::with_name("start")
+             .help("Starting words")
              .required(true)
              .min_values(1))
         .get_matches();
@@ -47,11 +66,15 @@ fn main() {
             ::std::process::exit(1);
         }
     };
-    let seed = matches.values_of("seed").unwrap().collect::<Vec<_>>();
+    let start = matches.values_of("start").unwrap().collect::<Vec<_>>();
 
-    let corpus = Corpus::new(input, context).unwrap();
-    print!("{} ", seed.join(" "));
-    for (i, word) in corpus.words(&seed).enumerate() {
+    let mut corpus = Corpus::new(input, context).unwrap();
+    if let Some(seed) = matches.value_of("seed") {
+        corpus.seed(parse_seed(seed));
+    }
+    println!("random seed = {}", format_seed(corpus.get_seed()));
+    print!("{} ", start.join(" "));
+    for (i, word) in corpus.words(&start).enumerate() {
         print!("{}", word);
         if i < length - 1 || !word.ends_with(".") {
             print!(" ");

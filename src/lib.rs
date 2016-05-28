@@ -1,19 +1,21 @@
 extern crate rand;
 
-use rand::Rng;
+use rand::{Rng, SeedableRng, XorShiftRng};
 use std::cmp;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 
 pub struct Corpus {
+    seed: [u32; 4],
     max_context: usize,
     words: Vec<String>,
-    table: HashMap<Vec<String>, HashMap<String, f64>>,
+    table: HashMap<Vec<String>, BTreeMap<String, f64>>,
 }
 
 pub struct Chain<'a> {
+    rng: XorShiftRng,
     history: VecDeque<String>,
     corpus: &'a Corpus,
 }
@@ -55,23 +57,36 @@ impl Corpus {
                 let count = word_count.entry(word).or_insert(0u32);
                 *count += 1;
             }
-            let mut word_probs = HashMap::new();
+            let mut word_probs = BTreeMap::new();
             for (word, count) in word_count.drain() {
                 word_probs.insert(word, f64::from(count) / f64::from(total_words));
             }
             table.insert(history.into_iter().collect(), word_probs);
         }
 
+        let mut rng = rand::thread_rng();
+        let seed = [rng.gen(), rng.gen(), rng.gen(), rng.gen()];
+
         Ok(Corpus {
+            seed: seed,
             max_context: max_context,
             words: words,
             table: table,
         })
     }
 
-    pub fn words(&self, history: &[&str]) -> Chain {
+    pub fn seed(&mut self, seed: [u32; 4]) {
+        self.seed = seed;
+    }
+
+    pub fn get_seed(&self) -> [u32; 4] {
+        self.seed
+    }
+
+    pub fn words(&self, start: &[&str]) -> Chain {
         Chain {
-            history: history.iter()
+            rng: SeedableRng::from_seed(self.seed),
+            history: start.iter()
                 .map(|&s| s.to_lowercase())
                 .collect(),
             corpus: self,
@@ -96,7 +111,7 @@ impl<'a> Iterator for Chain<'a> {
                     .collect();
                 match self.corpus.table.get(&key) {
                     Some(word_probs) => {
-                        let r = rand::thread_rng().gen::<f64>();
+                        let r = self.rng.gen::<f64>();
                         let mut acc = 0.0;
                         for (word, prob) in word_probs {
                             acc += *prob;
@@ -112,7 +127,7 @@ impl<'a> Iterator for Chain<'a> {
             }
             unreachable!("failed to find a key")
         } else {
-            let word = rand::thread_rng().choose(&self.corpus.words)
+            let word = self.rng.choose(&self.corpus.words)
                 .expect("corpus words shouldn't be empty");
             self.history.push_back(word.clone());
             Some(word)
