@@ -125,12 +125,11 @@ impl<'a> Iterator for Chain<'a> {
                     None => {}
                 }
             }
-            unreachable!("failed to find a key")
-        } else {
-            let word = self.rng.choose(&self.corpus.words)
-                .expect("corpus words shouldn't be empty");
-            self.history.push_back(word.clone());
-            Some(word)
         }
+
+        let word = self.rng.choose(&self.corpus.words)
+            .expect("corpus words shouldn't be empty");
+        self.history.push_back(word.clone());
+        Some(word)
     }
 }
