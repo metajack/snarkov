@@ -47,15 +47,11 @@ fn main() {
             ::std::process::exit(1);
         }
     };
-    let seed = matches.values_of("seed").expect("foo").collect::<Vec<_>>();
-    if seed.len() != context {
-        println!("error: context is {} but {} seeds specified", context, seed.len());
-        ::std::process::exit(1);
-    }
+    let seed = matches.values_of("seed").unwrap().collect::<Vec<_>>();
 
     let corpus = Corpus::new(input, context).unwrap();
     print!("{} ", seed.join(" "));
-    for (i, word) in corpus.words(&seed).unwrap().enumerate() {
+    for (i, word) in corpus.words(&seed).enumerate() {
         print!("{}", word);
         if i < length - 1 || !word.ends_with(".") {
             print!(" ");

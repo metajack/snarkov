@@ -1,13 +1,14 @@
 extern crate rand;
 
 use rand::Rng;
+use std::cmp;
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 
 pub struct Corpus {
-    context: usize,
+    max_context: usize,
     words: Vec<String>,
     table: HashMap<Vec<String>, HashMap<String, f64>>,
 }
@@ -18,7 +19,7 @@ pub struct Chain<'a> {
 }
 
 impl Corpus {
-    pub fn new(path: &Path, context: usize) -> io::Result<Corpus> {
+    pub fn new(path: &Path, max_context: usize) -> io::Result<Corpus> {
         let mut f = try!(File::open(path));
         let mut buffer = String::new();
         try!(f.read_to_string(&mut buffer));
@@ -29,14 +30,21 @@ impl Corpus {
 
         let mut builder = HashMap::new();
         let mut history = VecDeque::new();
-        for word in words.iter() {
-            if history.len() == context {
-                let word_list = builder.entry(history.clone()).or_insert(vec![]);
-                (*word_list).push(word.clone());
-                history.push_back(word.clone());
+        history.push_back(words[0].clone());
+        for word in &words[1..] {
+            let hist_len = history.len();
+            for skip in 0..cmp::min(hist_len, max_context) {
+                let key: Vec<String> = history.iter()
+                    .skip(skip)
+                    .cloned()
+                    .collect();
+                let word_list = builder.entry(key).or_insert(vec![]);
+                word_list.push(word.clone());
+            }
+
+            history.push_back(word.clone());
+            if history.len() > max_context {
                 history.pop_front();
-            } else {
-                history.push_back(word.clone());
             }
         }
         let mut table = HashMap::new();
@@ -55,18 +63,19 @@ impl Corpus {
         }
 
         Ok(Corpus {
-            context: context,
+            max_context: max_context,
             words: words,
             table: table,
         })
     }
 
-    pub fn words(&self, history: &[&str]) -> Option<Chain> {
-        if history.len() != self.context { return None }
-        Some(Chain {
-            history: history.iter().map(|&s| s.to_lowercase()).collect(),
+    pub fn words(&self, history: &[&str]) -> Chain {
+        Chain {
+            history: history.iter()
+                .map(|&s| s.to_lowercase())
+                .collect(),
             corpus: self,
-        })
+        }
     }
 }
 
@@ -74,27 +83,39 @@ impl<'a> Iterator for Chain<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<&'a str> {
-        let key: Vec<String> = self.history.iter().cloned().collect();
-        self.history.pop_front();
-        match self.corpus.table.get(&key) {
-            Some(word_probs) => {
-                let r = rand::thread_rng().gen::<f64>();
-                let mut acc = 0.0;
-                for (word, prob) in word_probs {
-                    acc += *prob;
-                    if acc > r {
-                        self.history.push_back(word.clone());
-                        return Some(word)
+        while self.history.len() > self.corpus.max_context {
+            self.history.pop_front();
+        }
+
+        let hist_len = self.history.len();
+        if hist_len > 0 {
+            for skip in 0..hist_len {
+                let key: Vec<String> = self.history.iter()
+                    .skip(skip)
+                    .cloned()
+                    .collect();
+                match self.corpus.table.get(&key) {
+                    Some(word_probs) => {
+                        let r = rand::thread_rng().gen::<f64>();
+                        let mut acc = 0.0;
+                        for (word, prob) in word_probs {
+                            acc += *prob;
+                            if acc > r {
+                                self.history.push_back(word.clone());
+                                return Some(word)
+                            }
+                        }
+                        unreachable!("failed to pick a word")
                     }
+                    None => {}
                 }
-                unreachable!("failed to pick a word")
             }
-            None => {
-                let word = rand::thread_rng().choose(&self.corpus.words)
-                    .expect("word shouldn't be empty");
-                self.history.push_back(word.clone());
-                Some(word)
-            }
+            unreachable!("failed to find a key")
+        } else {
+            let word = rand::thread_rng().choose(&self.corpus.words)
+                .expect("corpus words shouldn't be empty");
+            self.history.push_back(word.clone());
+            Some(word)
         }
     }
 }
